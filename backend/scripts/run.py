@@ -27,25 +27,28 @@ ydl_options = {
 
 import yt_dlp
 
-URL = "https://www.youtube.com/watch?v=C_YcIrq_P_4&t=215s"
+URL = "https://www.youtube.com/watch?v=O3VcV_1qa-w"
 
-with yt_dlp.YoutubeDL(ydl_options) as ydl:
+def get_id(URL):
 
-    info = ydl.extract_info(URL, download=False)
-    info = ydl.sanitize_info(info)
+    with yt_dlp.YoutubeDL(ydl_options) as ydl:
 
-    formats = info.get('formats', [])
+        info = ydl.extract_info(URL, download=False)
+        info = ydl.sanitize_info(info)
 
-    from pprint import pprint
+        formats = info.get('formats', [])
 
-    # pprint(formats)
+        from pprint import pprint
 
-    favorite_formats = ['93-0', '93-1', '92-0', '92-1', '94-0', '94-1']
-    id = ""
-    for i in formats:
-        for j in favorite_formats:
-            if j == i.get('format_id'):
-                id = j
-                break
+        # pprint(formats)
 
-    print(id)
+        favorite_formats = ['93-0', '93-1', '92-0', '92-1', '94-0', '94-1', '18']
+        id = ""
+
+        for i in formats:
+            for j in favorite_formats:
+                if j == i.get('format_id'):
+                    id = j
+                    break
+
+    return id
