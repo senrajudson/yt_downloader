@@ -8,6 +8,8 @@ def download_video(url, opts):
     video_format, formats_list, favorites = get_id(url)
 
     ydl_opts = {
+        'external_downloader': 'ffmpeg',
+        'external_downloader_args': {'ffmpeg': ['-hls_use_mpegts']},
         'quiet': False,
         'no_warnings': False,
         'format':video_format,

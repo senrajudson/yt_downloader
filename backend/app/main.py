@@ -88,11 +88,11 @@ def run_yt_dlp_custom_title(url: str, custom_title: str, cookies: list):
         ydl_opts = {
             'cookiefile': cookie_path,
             # Forçamos o título que veio da extensão em vez de deixar o yt-dlp adivinhar
-            'outtmpl': f'/home/judson/yt_downloader/downloads/{safe_title}_{unique_id}.%(ext)s', 
+            'outtmpl': f'/home/judson/projetos/yt_downloader/downloads/{safe_title}_{unique_id}.%(ext)s', 
             'save_cookies': False 
         }
         
-        os.makedirs('/home/judson/yt_downloader/downloads/', exist_ok=True)
+        os.makedirs('/home/judson/projetos/yt_downloader/downloads/', exist_ok=True)
         download_video(url, ydl_opts)
         
     finally:
