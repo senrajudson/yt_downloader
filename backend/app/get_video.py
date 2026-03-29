@@ -9,7 +9,7 @@ def download_video(url, opts):
 
     ydl_opts = {
         'external_downloader': 'ffmpeg',
-        'external_downloader_args': {'ffmpeg': ['-hls_use_mpegts']},
+        'hls_use_mpegts': True,      
         'quiet': False,
         'no_warnings': False,
         'format':video_format,
