@@ -1,17 +1,19 @@
 import os
 import re
 import time
+import random
 import tempfile
 from typing import List
 from pathlib import Path
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from concurrent.futures import ThreadPoolExecutor # <-- IMPORTANTE: Nova importação
+
 from app.get_video import download_video
 
 app = FastAPI()
 
-# Configuração de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -23,10 +25,19 @@ home_dir = str(Path.home())
 download_path = os.path.join(home_dir, 'projetos/yt_downloader/downloads')
 os.makedirs(download_path, exist_ok=True)
 
+# ==========================================
+# CONFIGURAÇÃO DE MULTITHREADING E FILA
+# ==========================================
+# Variável global para definir o número máximo de downloads simultâneos
+MAX_WORKERS = 4 
+
+# O Executor cria as threads e gerencia a fila (queue) automaticamente
+download_queue = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+
+
 def convert_to_netscape_format(cookies_list):
-    """Converte a lista de cookies do Chrome para o formato Netscape."""
+    # ... (Mantenha o seu código de conversão de cookies intacto aqui) ...
     lines = ["# Netscape HTTP Cookie File", "# https://curl.haxx.se/rfc/cookie_spec.html", "# This is a generated file!  Do not edit.", ""]
-    
     for cookie in cookies_list:
         domain = cookie.get('domain', '')
         include_subdomains = 'TRUE' if domain.startswith('.') else 'FALSE'
@@ -35,12 +46,9 @@ def convert_to_netscape_format(cookies_list):
         expires = int(cookie.get('expirationDate', 0))
         name = cookie.get('name', '')
         value = cookie.get('value', '')
-        
         line = f"{domain}\t{include_subdomains}\t{path}\t{secure}\t{expires}\t{name}\t{value}"
         lines.append(line)
-        
     return "\n".join(lines)
-
 
 # ==========================================
 # MODELOS PYDANTIC
@@ -59,17 +67,14 @@ class SmartBatchRequest(BaseModel):
     videos: List[VideoItem]
     cookies: list
 
-
 # ==========================================
-# FUNÇÕES DE BACKGROUND
+# FUNÇÕES WORKER (O que roda em paralelo)
 # ==========================================
 
 def process_smart_batch(videos: List[VideoItem], cookies: list):
     """
-    Processa a lista de vídeos de forma inteligente.
-    Tenta baixar um por um; se tiver sucesso, para o loop (evitando duplicatas).
+    Processa a lista de vídeos. O ThreadPoolExecutor vai rodar isso em paralelo.
     """
-    # 1. Prepara o arquivo de cookies UMA única vez para o lote inteiro
     netscape_cookies = convert_to_netscape_format(cookies)
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
         tmp.write(netscape_cookies)
@@ -78,24 +83,19 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
     try:
         sucesso_geral = False
         
-        # 2. Loop inteligente (Fallback)
         for video in videos:
             if video.url.lower().endswith('.gif'):
                 print(f"⏩ Pulando {video.url} por ser um arquivo GIF.")
                 continue 
 
-            # Limpa o título (usa o título vindo da extensão)
             safe_title = re.sub(r'[\\/*?:"<>|]', "", video.title).strip()
             safe_title = safe_title.replace(" ", "_")
 
-            # 2. Gera um timestamp único (Tempo atual + número aleatório para garantir)
-            timestamp = f"{int(time.time())}"
+            timestamp = f"{int(time.time())}_{random.randint(1000, 9999)}"
             unique_title = f"{safe_title}_{timestamp}"
 
-            # Configurações do yt-dlp
             ydl_opts = {
                 'cookiefile': cookie_path,
-                # Usamos o NOSSO safe_title em vez de %(title)s
                 'outtmpl': f'{download_path}/{unique_title}.%(ext)s',
                 'format': 'best[height=360]/bestvideo[height=360]+bestaudio/best[height<=360]',
                 'save_cookies': False 
@@ -103,39 +103,40 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
 
             print(f"🔄 Tentando baixar: {video.url}")
             
-            # Chama a função do seu get_video.py
             sucesso = download_video(video.url, ydl_opts)
             
             if sucesso:
-                print(f"✅ Download concluído com sucesso: {safe_title}")
+                print(f"✅ Download concluído com sucesso: {unique_title}")
                 sucesso_geral = True
-                # Break é CRUCIAL! Se a URL da página funcionou, não precisamos baixar o .m3u8 da rede.
                 break 
             else:
-                print(f"⚠️ Falha ao baixar {video.url}. Tentando a próxima opção da lista...")
+                print(f"⚠️ Falha ao baixar {video.url}. Tentando a próxima opção...")
 
         if not sucesso_geral:
-            print("❌ Nenhuma das URLs enviadas pela extensão pôde ser baixada.")
+            print("❌ Nenhuma das URLs enviadas pôde ser baixada.")
 
     finally:
-        # 3. Limpeza final
         if os.path.exists(cookie_path):
             os.remove(cookie_path)
 
 
 # ==========================================
-# ENDPOINTS
+# ENDPOINTS (Rotas da API)
 # ==========================================
 
 @app.post("/download_single")
-async def single_download(req: SingleDownloadRequest, background_tasks: BackgroundTasks):
-    # Transforma o SingleRequest em uma lista de 1 item e manda pro mesmo processador inteligente
+async def single_download(req: SingleDownloadRequest):
     video_item = VideoItem(url=req.url, title=req.title)
-    background_tasks.add_task(process_smart_batch, [video_item], req.cookies)
-    return {"message": f"Iniciando download de: {req.title}"}
+    
+    # Substituímos o background_tasks pelo nosso executor com limite!
+    download_queue.submit(process_smart_batch, [video_item], req.cookies)
+    
+    return {"message": f"Iniciando download (ou na fila): {req.title}"}
 
 @app.post("/download_smart_batch")
-async def smart_batch_download(req: SmartBatchRequest, background_tasks: BackgroundTasks):
-    # Enviamos a LISTA INTEIRA para UMA única tarefa de background
-    background_tasks.add_task(process_smart_batch, req.videos, req.cookies)
-    return {"message": f"Processando lista inteligente com {len(req.videos)} links/camadas!"}
+async def smart_batch_download(req: SmartBatchRequest):
+    
+    # Substituímos o background_tasks pelo nosso executor com limite!
+    download_queue.submit(process_smart_batch, req.videos, req.cookies)
+    
+    return {"message": f"Adicionado à fila de downloads. Máximo de {MAX_WORKERS} simultâneos!"}
