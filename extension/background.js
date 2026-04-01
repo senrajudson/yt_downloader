@@ -1,3 +1,5 @@
+//background.js
+
 let capturedUrls = {};
 
 // Escuta todas as requisições de rede antes de acontecerem
@@ -6,14 +8,20 @@ chrome.webRequest.onBeforeRequest.addListener(
         // Ignora requisições de background sem aba definida
         if (details.tabId === -1) return;
 
-        const url = details.url;
-
-        // Se a requisição for de um arquivo de vídeo ou playlist HLS (m3u8)
-        if (url.includes('.m3u8') || url.includes('.mp4')) {
-            if (!capturedUrls[details.tabId]) {
-                capturedUrls[details.tabId] = new Set();
+        try {
+            const urlObj = new URL(details.url);
+            
+            // Verifica o caminho final (pathname), ignorando tudo que vem depois do "?"
+            if (urlObj.pathname.endsWith('.m3u8') || urlObj.pathname.endsWith('.mp4')) {
+                if (!capturedUrls[details.tabId]) {
+                    capturedUrls[details.tabId] = new Set();
+                }
+                // Adiciona a URL completa capturada
+                capturedUrls[details.tabId].add(details.url);
             }
-            capturedUrls[details.tabId].add(url);
+        } catch (error) {
+            // Ignora URLs malformadas que possam quebrar a classe new URL()
+            console.error("Erro ao analisar URL na rede:", error);
         }
     },
     { urls: ["<all_urls>"] }
@@ -32,4 +40,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const urls = capturedUrls[request.tabId] ? Array.from(capturedUrls[request.tabId]) : [];
         sendResponse({ urls: urls });
     }
+    // Retorna true para manter o canal de mensagem aberto (boa prática)
+    return true; 
 });

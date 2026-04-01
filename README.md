@@ -1,0 +1,1 @@
+precisa instalar o ffmpeg

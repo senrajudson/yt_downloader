@@ -1,38 +1,55 @@
 import time
 import yt_dlp
-from app.utils import get_id
 
 def download_video(url, opts):
-    # Mesclamos as opções padrão com as que vieram da API (que contêm os cookies)
-
-    video_format, formats_list, favorites = get_id(url)
+    # Nota: Removi o get_id() aqui porque ele não estava sendo retornado ou
+    # usado de forma que afetasse o download diretamente, e poderia causar mais erros.
 
     ydl_opts = {
         'external_downloader': 'ffmpeg',
         'hls_use_mpegts': True,      
         'quiet': False,
-        'no_warnings': False,
-        'format':video_format,
-        **opts # Aqui entram o 'cookiefile' e o 'outtmpl' enviados pela main
+        'no_warnings': True, # Mudado para True para limpar o log
+        'ignoreerrors': True, # Essencial para o modo Batch
+        **opts # Recebe cookiefile e outtmpl da main
     }
 
     try:
-
+        # Forçamos o fallback de formato caso a opção da main falhe
+        ydl_opts.setdefault('format', 'best')
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            # Fazemos um dry-run primeiro
+            info = ydl.extract_info(url, download=False)
+            
+            if info:
+                # Se passou do dry-run, podemos baixar
+                ydl.download([url])
+                time.sleep(2)
+                return True
+            else:
+                return False
+                
+    except yt_dlp.utils.DownloadError as e:
+        # Pega erros comuns de download (Ex: Unsupported URL)
+        print(f"\n[Filtro] Ignorando URL não suportada: {url}")
+        return False
         
-        time.sleep(2)
-    
-    except: 
-        print('Formato não listado, movendo para o próximo vídeo',
-              "\nMy list: ", favorites,
-              "\nList: ", formats_list
-              )
-        
-        time.sleep(2)
+    except yt_dlp.utils.ExtractorError as e:
+        # Pega erros de extração/login
+        print(f"\n[Filtro] Falha ao extrair dados de: {url}")
+        return False
 
+    except Exception as e:
+        # Pega qualquer outra coisa (evita quebrar a API)
+        print(f"\n[Erro Geral] Ignorado ao processar {url}: {e}")
+        time.sleep(2)
+        return False
+
+# ==================================
+# Se for rodar o arquivo diretamente
+# ==================================
 if __name__ == '__main__':
-    
     URL = "https://www.youtube.com/watch?v=zFjd2q2qrn4"
-
-    download_video(URL)
+    opts = {'format': 'best', 'outtmpl': '%(title)s.%(ext)s'}
+    download_video(URL, opts)
