@@ -6,8 +6,8 @@ def download_video(url, opts):
     # usado de forma que afetasse o download diretamente, e poderia causar mais erros.
 
     ydl_opts = {
-        'external_downloader': 'ffmpeg',
-        'hls_use_mpegts': True,      
+        # 'external_downloader': 'ffmpeg', # para baixar livestreams, não necessário
+        # 'hls_use_mpegts': True, # para baixar livestreams, não necessário
         'quiet': False,
         'no_warnings': True, # Mudado para True para limpar o log
         'ignoreerrors': True, # Essencial para o modo Batch
