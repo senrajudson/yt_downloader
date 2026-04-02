@@ -102,6 +102,8 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
             }
 
             print(f"🔄 Tentando baixar: {video.url}")
+
+            time.sleep(1)
             
             sucesso = download_video(video.url, ydl_opts)
             
