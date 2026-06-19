@@ -27,7 +27,7 @@ ydl_options = {
 
 import yt_dlp
 
-URL = "https://www.youtube.com/watch?v=O3VcV_1qa-w"
+URL = "https://www.youtube.com/live/-uBf1O52byc"
 
 def get_id(URL):
 

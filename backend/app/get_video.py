@@ -50,6 +50,6 @@ def download_video(url, opts):
 # Se for rodar o arquivo diretamente
 # ==================================
 if __name__ == '__main__':
-    URL = "https://www.youtube.com/watch?v=zFjd2q2qrn4"
-    opts = {'format': 'best', 'outtmpl': '%(title)s.%(ext)s'}
+    URL = "https://www.youtube.com/live/-uBf1O52byc"
+    opts = {'format': 'bestvideo+bestaudio/best', 'outtmpl': '%(title)s.%(ext)s'}
     download_video(URL, opts)
