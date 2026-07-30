@@ -1,55 +1,86 @@
 import time
 import yt_dlp
 
-def download_video(url, opts):
-    # Nota: Removi o get_id() aqui porque ele não estava sendo retornado ou
-    # usado de forma que afetasse o download diretamente, e poderia causar mais erros.
 
+def _classify_error(e: Exception) -> str:
+    msg = str(e)
+    if isinstance(e, yt_dlp.utils.DownloadError):
+        if "Requested format is not available" in msg:
+            return "format_unavailable"
+        if "embed-only" in msg or "embedding URL" in msg:
+            return "embed_only"
+        return "unsupported"
+    if isinstance(e, yt_dlp.utils.ExtractorError):
+        return "unsupported"
+    return "other"
+
+
+def _download(url, ydl_opts) -> tuple:
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        time.sleep(2)
+        return (True, "ok")
+    except yt_dlp.utils.DownloadError as e:
+        bucket = _classify_error(e)
+        print(f"\n[{bucket}] Falha ao baixar: {url}")
+        return (False, bucket)
+    except yt_dlp.utils.ExtractorError:
+        print(f"\n[unsupported] Falha ao extrair: {url}")
+        return (False, "unsupported")
+    except Exception as e:
+        print(f"\n[other] Erro ao processar {url}: {e}")
+        time.sleep(2)
+        return (False, "other")
+
+
+def download_video_with_class(url, opts) -> tuple:
     ydl_opts = {
-        # 'external_downloader': 'ffmpeg', # para baixar livestreams, não necessário
-        # 'hls_use_mpegts': True, # para baixar livestreams, não necessário
         'quiet': False,
-        'no_warnings': True, # Mudado para True para limpar o log
-        'ignoreerrors': True, # Essencial para o modo Batch
-        **opts # Recebe cookiefile e outtmpl da main
+        'no_warnings': True,
+        'ignoreerrors': True,
+        **opts
     }
+    ydl_opts.setdefault('format', 'best')
 
     try:
-        # Forçamos o fallback de formato caso a opção da main falhe
-        ydl_opts.setdefault('format', 'best')
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Fazemos um dry-run primeiro
             info = ydl.extract_info(url, download=False)
-            
-            if info:
-                # Se passou do dry-run, podemos baixar
-                ydl.download([url])
-                time.sleep(2)
-                return True
-            else:
-                return False
-                
+            if not info:
+                return (False, "other")
     except yt_dlp.utils.DownloadError as e:
-        # Pega erros comuns de download (Ex: Unsupported URL)
-        print(f"\n[Filtro] Ignorando URL não suportada: {url}")
-        return False
-        
-    except yt_dlp.utils.ExtractorError as e:
-        # Pega erros de extração/login
-        print(f"\n[Filtro] Falha ao extrair dados de: {url}")
-        return False
-
+        bucket = _classify_error(e)
+        print(f"\n[{bucket}] Falha no dry-run: {url}")
+        return (False, bucket)
+    except yt_dlp.utils.ExtractorError:
+        print(f"\n[unsupported] Falha ao extrair (dry-run): {url}")
+        return (False, "unsupported")
     except Exception as e:
-        # Pega qualquer outra coisa (evita quebrar a API)
-        print(f"\n[Erro Geral] Ignorado ao processar {url}: {e}")
-        time.sleep(2)
-        return False
+        print(f"\n[other] Erro no dry-run {url}: {e}")
+        return (False, "other")
 
-# ==================================
-# Se for rodar o arquivo diretamente
-# ==================================
+    ok, bucket = _download(url, ydl_opts)
+    if ok:
+        return (True, bucket)
+
+    if bucket == "format_unavailable":
+        print(f"\n[fallback] 360p indisponível para {url}; tentando 'best'")
+        fallback_opts = {**ydl_opts, 'format': 'best'}
+        ok, bucket = _download(url, fallback_opts)
+        if ok:
+            print(f"\n[fallback] Sucesso com formato 'best': {url}")
+            return (True, "ok_fallback")
+        print(f"\n[fallback] Falha com 'best' para {url} [{bucket}]")
+
+    return (False, bucket)
+
+
+def download_video(url, opts):
+    ok, _ = download_video_with_class(url, opts)
+    return ok
+
+
 if __name__ == '__main__':
-    URL = "https://www.youtube.com/live/-uBf1O52byc"
+    URL = "https://tiexames.com.br/novoensino/vimeo/player.php?SESSAO=3281"
     opts = {'format': 'bestvideo+bestaudio/best', 'outtmpl': '%(title)s.%(ext)s'}
     download_video(URL, opts)

@@ -3,14 +3,15 @@ import re
 import time
 import random
 import tempfile
-from typing import List
+from typing import List, Optional
 from pathlib import Path
+from urllib.parse import urlparse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel  
 from concurrent.futures import ThreadPoolExecutor # <-- IMPORTANTE: Nova importação
 
-from app.get_video import download_video
+from app.get_video import download_video_with_class
 
 app = FastAPI()
 
@@ -71,6 +72,19 @@ class SmartBatchRequest(BaseModel):
 # FUNÇÕES WORKER (O que roda em paralelo)
 # ==========================================
 
+def _pick_embed_referer(videos: List[VideoItem]) -> Optional[str]:
+    for video in videos:
+        parsed = urlparse(video.url)
+        hostname = parsed.hostname or ""
+        path = parsed.path or ""
+        if "vimeo.com" in hostname:
+            continue
+        if path.endswith(".m3u8") or path.endswith(".mp4"):
+            continue
+        return video.url
+    return None
+
+
 def process_smart_batch(videos: List[VideoItem], cookies: list):
     """
     Processa a lista de vídeos. O ThreadPoolExecutor vai rodar isso em paralelo.
@@ -79,6 +93,8 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
         tmp.write(netscape_cookies)
         cookie_path = tmp.name
+
+    embed_referer = _pick_embed_referer(videos)
 
     try:
         sucesso_geral = False
@@ -101,18 +117,33 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
                 'save_cookies': False 
             }
 
-            print(f"🔄 Tentando baixar: {video.url}")
+            if "player.vimeo.com" in video.url:
+                headers = {}
+                headers['Referer'] = embed_referer or video.url
+                headers['User-Agent'] = (
+                    'Mozilla/5.0 (X11; Linux x86_64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/120.0.0.0 Safari/537.36'
+                )
+                ydl_opts['http_headers'] = headers
+                ref_str = embed_referer or "self"
+                print(f"🔄 Tentando: {video.url} [Referer: {ref_str}]")
+            else:
+                print(f"🔄 Tentando: {video.url}")
 
             time.sleep(1)
-            
-            sucesso = download_video(video.url, ydl_opts)
-            
-            if sucesso:
-                print(f"✅ Download concluído com sucesso: {unique_title}")
+
+            ok, bucket = download_video_with_class(video.url, ydl_opts)
+
+            if ok:
+                print(f"✅ [{bucket}] Download concluído: {unique_title}")
                 sucesso_geral = True
-                break 
+                break
             else:
-                print(f"⚠️ Falha ao baixar {video.url}. Tentando a próxima opção...")
+                print(f"⚠️ [{bucket}] Falha: {video.url}")
+                if bucket == "embed_only":
+                    print("⏩ embed_only não retentável; próxima URL...")
+                    continue
 
         if not sucesso_geral:
             print("❌ Nenhuma das URLs enviadas pôde ser baixada.")
