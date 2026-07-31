@@ -113,7 +113,12 @@ def process_smart_batch(videos: List[VideoItem], cookies: list):
             ydl_opts = {
                 'cookiefile': cookie_path,
                 'outtmpl': f'{download_path}/{unique_title}.%(ext)s',
-                'format': 'best[height=360]/bestvideo[height=360]+bestaudio/best[height<=360]',
+                'format': (
+                    "bestvideo*[height<=360]+bestaudio/"
+                    "best[height<=360]/"
+                    "bestvideo*+bestaudio/"
+                    "best"
+                ),
                 'save_cookies': False 
             }
 

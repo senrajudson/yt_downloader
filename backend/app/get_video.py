@@ -42,37 +42,22 @@ def download_video_with_class(url, opts) -> tuple:
         **opts
     }
     ydl_opts.setdefault('format', 'best')
+    preflight_opts = {**ydl_opts, 'ignoreerrors': False}
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(preflight_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            if not info:
-                return (False, "other")
+        if not info:
+            return (False, "other")
     except yt_dlp.utils.DownloadError as e:
         bucket = _classify_error(e)
-        print(f"\n[{bucket}] Falha no dry-run: {url}")
         return (False, bucket)
     except yt_dlp.utils.ExtractorError:
-        print(f"\n[unsupported] Falha ao extrair (dry-run): {url}")
         return (False, "unsupported")
-    except Exception as e:
-        print(f"\n[other] Erro no dry-run {url}: {e}")
+    except Exception:
         return (False, "other")
 
-    ok, bucket = _download(url, ydl_opts)
-    if ok:
-        return (True, bucket)
-
-    if bucket == "format_unavailable":
-        print(f"\n[fallback] 360p indisponível para {url}; tentando 'best'")
-        fallback_opts = {**ydl_opts, 'format': 'best'}
-        ok, bucket = _download(url, fallback_opts)
-        if ok:
-            print(f"\n[fallback] Sucesso com formato 'best': {url}")
-            return (True, "ok_fallback")
-        print(f"\n[fallback] Falha com 'best' para {url} [{bucket}]")
-
-    return (False, bucket)
+    return _download(url, ydl_opts)
 
 
 def download_video(url, opts):
